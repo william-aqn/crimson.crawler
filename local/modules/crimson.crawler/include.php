@@ -1,5 +1,42 @@
 <?
 
+class CrimsonCrawlerIblock {
+
+    public function add(&$arFields) {
+        return static::init($arFields);
+    }
+
+    public function update(&$arFields) {
+        return static::init($arFields);
+    }
+
+    private static function init(&$arFields) {
+        if (!$arFields["RESULT"]) {
+            return false;
+        }
+
+        $helper = new \CrimsonCrawlerHelper();
+        $iblocks = $helper->getConfig()['iblocks'];
+        if (in_array($arFields['IBLOCK_ID'], $iblocks)) {
+
+            $res = \CIBlockElement::GetByID($arFields['ID']);
+            if ($ar_res = $res->GetNext()) {
+                $sites = $helper->getSites();
+                $url = "http://{$sites[$ar_res['LID']]['SERVER_NAME']}{$ar_res['DETAIL_PAGE_URL']}";
+                if ($content = $helper->innerParser($url)) {
+                    \CAdminNotify::Add([
+                        'MESSAGE' => "Переобход ссылки <a href='$url' target='_blank'>{$content['url']}</a> завершён. Код: {$content['code']}; Время загрузки: {$content['time']}",
+                        'TAG' => 'crimson_crawler_notify',
+                        'MODULE_ID' => $helper->getModuleId(),
+                        'ENABLE_CLOSE' => 'Y'
+                    ]);
+                }
+            }
+        }
+    }
+
+}
+
 class CrimsonCrawlerHelper {
 
     private $module_id;
@@ -13,6 +50,38 @@ class CrimsonCrawlerHelper {
         $this->module_id = basename(__DIR__);
         \Bitrix\Main\Loader::includeModule("main");
         $this->getConfig();
+    }
+
+    public function getModuleId() {
+        return $this->module_id;
+    }
+
+    public function innerParser($url) {
+        if (!$url) {
+            return false;
+        }
+        $curl = curl_init($url);
+        curl_setopt($curl, CURLOPT_URL, $url);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_HEADER, true);
+        curl_setopt($curl, CURLOPT_NOBODY, true); // Только загловки вернутся
+
+        curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($curl, CURLOPT_MAXREDIRS, 10);
+
+        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+
+        $resp = curl_exec($curl);
+        $data = [
+            'code' => curl_getinfo($curl, CURLINFO_HTTP_CODE),
+            'time' => curl_getinfo($curl, CURLINFO_TOTAL_TIME),
+            'url' => curl_getinfo($curl, CURLINFO_EFFECTIVE_URL),
+            'result' => $resp
+        ];
+        //highlight_string($resp); die();
+        curl_close($curl);
+        return $data;
     }
 
     /**
@@ -31,20 +100,20 @@ class CrimsonCrawlerHelper {
       [EMAIL] => no-reply@proxy-sale.com
       [CULTURE_ID] => 2
      */
-    public function sites() {
+    public function getSites() {
         if (count($this->sites) == 0) {
             $this->sites = [];
             $res = \Bitrix\Main\SiteTable::getList(array('filter' => array('=ACTIVE' => 'Y')));
             while ($item = $res->Fetch()) {
                 // Проверка на существование карты сайта
-                $this->check_sitemap($item);
+                $this->checkSitemap($item);
                 $this->sites[$item['LID']] = $item;
             }
         }
         return $this->sites;
     }
 
-    private function check_sitemap(&$item) {
+    private function checkSitemap(&$item) {
         if (!$item['DOC_ROOT']) {
             $item['DOC_ROOT'] = $_SERVER["DOCUMENT_ROOT"];
         }
@@ -54,8 +123,8 @@ class CrimsonCrawlerHelper {
         $item['SITEMAP_FILE_EXISTS'] = (file_exists($file) ? "Y" : "N");
     }
 
-    public function sites_multiselect() {
-        $sites = $this->sites();
+    public function sitesMultiselect() {
+        $sites = $this->getSites();
         $ret = [];
         foreach ($sites as $item) {
             $ret[$item['LID']] = "[{$item['NAME']}] - Файл " . ($item['SITEMAP_FILE'] == 'N' ? "отсутствует" : "существует") . " [{$item['SITEMAP_FILE']}]";
@@ -78,8 +147,10 @@ class CrimsonCrawlerHelper {
                 }
                 $sites[md5($url)] = $url;
             }
+            $iblocks = explode(",", \COption::GetOptionString($this->module_id, "IBLOCKS"));
             $this->config = [
                 'sites' => $sites,
+                'iblocks' => $iblocks,
                 'time' => \COption::GetOptionString($this->module_id, "TIME")
             ];
         }
@@ -97,10 +168,10 @@ class CrimsonCrawlerHelper {
         if (!is_dir($run_dir)) {
             return false;
         }
-        
+
         $command = "/bin/bash " . static::CRAWLER_SH . " $run_dir 2>&1 > $run_dir/crawler.log &";
         //echo $command;
-        proc_close( proc_open( $command, [], $foo ) );
+        proc_close(proc_open($command, [], $foo));
         //var_dump(exec($command));
         return true;
     }
@@ -121,7 +192,7 @@ class CrimsonCrawlerHelper {
      * @param type $dirPath
      * @return boolean
      */
-    private function rmdir_recursive($dirPath) {
+    private function rmdirRecursive($dirPath) {
         if (!empty($dirPath) && \is_dir($dirPath)) {
             $dirObj = new \RecursiveDirectoryIterator($dirPath, \RecursiveDirectoryIterator::SKIP_DOTS); //upper dirs not included,otherwise DISASTER HAPPENS :)
             $files = new \RecursiveIteratorIterator($dirObj, \RecursiveIteratorIterator::CHILD_FIRST);
@@ -140,7 +211,7 @@ class CrimsonCrawlerHelper {
      */
     public function clear($id) {
         if ($this->getUrlById($id)) {
-            return $this->rmdir_recursive(static::WORK_DIR . "/task/$id");
+            return $this->rmdirRecursive(static::WORK_DIR . "/task/$id");
         }
         return false;
     }
@@ -229,7 +300,7 @@ class CrimsonCrawlerHelper {
         if (!$this->getUrlById($taskId)) {
             return false;
         }
-        
+
         $fname = static::WORK_DIR . "/task/$taskId/$fileId";
         if (!file_exists($fname)) {
             return false;
@@ -317,7 +388,7 @@ class CrimsonCrawlerHelper {
             $ret['status'] = $this->getTaskStatusFromFile($id, $ret['last_update']);
             $taskLinks = $this->loadTaskLinksFile($id);
             // Считаем количество ссылок в файле
-            $ret['links_total'] = count(explode("\n", $taskLinks))-1; // -1
+            $ret['links_total'] = count(explode("\n", $taskLinks)) - 1; // -1
             // Считаем количество загруженных страниц
             $ret['links_processed'] = count($this->getTaskCountParsedLinks($id));
         }

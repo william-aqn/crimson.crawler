@@ -30,7 +30,6 @@ class crimson_crawler extends CModule {
 
         $this->PARTNER_NAME = Loc::getMessage("CRIMSON_PARTNER_NAME");
         $this->PARTNER_URI = Loc::getMessage("CRIMSON_PARTNER_URI");
-        
     }
 
     function AddAgent() {
@@ -47,6 +46,7 @@ class crimson_crawler extends CModule {
 
     function DoUninstall() {
         global $APPLICATION;
+        $this->UnInstallEvents();
         $this->UninstallFiles();
         \CAgent::RemoveModuleAgents($this->MODULE_ID);
         $APPLICATION->IncludeAdminFile(Loc::getMessage("CRIMSON_UNINSTALL_TITLE"), $_SERVER["DOCUMENT_ROOT"] . "/local/modules/{$this->MODULE_ID}/install/unstep1.php");
@@ -62,13 +62,12 @@ class crimson_crawler extends CModule {
         UnRegisterModule($this->MODULE_ID);
     }
 
-//    /**
-//     * Установка событий модуля
-//     *
-//     * @return true
-//     */
-//    public function InstallEvents() {
-//        $eventManager = EventManager::getInstance();
+    /**
+     * Установка событий модуля
+     *
+     * @return true
+     */
+    public function InstallEvents() {
 //        $eventManager->registerEventHandlerCompatible(
 //                'main',
 //                'OnBuildGlobalMenu',
@@ -76,16 +75,30 @@ class crimson_crawler extends CModule {
 //                'CrimsonCrawlerHelper',
 //                'menu'
 //        );
-//
-//        return true;
-//    }
-//
-//    /**
-//     * Удаление событий модуля
-//     *
-//     * @return true
-//     */
-//    public function UnInstallEvents() {
+        \Bitrix\Main\EventManager::getInstance()->registerEventHandler(
+                'iblock',
+                'OnAfterIBlockElementAdd',
+                $this->MODULE_ID,
+                'CrimsonCrawlerIblock',
+                'add'
+        );
+        \Bitrix\Main\EventManager::getInstance()->registerEventHandler(
+                'iblock',
+                'OnAfterIBlockElementUpdate',
+                $this->MODULE_ID,
+                'CrimsonCrawlerIblock',
+                'update'
+        );
+
+        return true;
+    }
+
+    /**
+     * Удаление событий модуля
+     *
+     * @return true
+     */
+    public function UnInstallEvents() {
 //        EventManager::getInstance()->unRegisterEventHandler(
 //                'main',
 //                'OnBuildGlobalMenu',
@@ -93,8 +106,22 @@ class crimson_crawler extends CModule {
 //                'CrimsonCrawlerHelper',
 //                'menu'
 //        );
-//
-//        return true;
-//    }
+        \Bitrix\Main\EventManager::getInstance()->unRegisterEventHandler(
+                'iblock',
+                'OnAfterIBlockElementUpdate',
+                $this->MODULE_ID,
+                'CrimsonCrawlerIblock',
+                'add'
+        );
+        \Bitrix\Main\EventManager::getInstance()->unRegisterEventHandler(
+                'iblock',
+                'OnAfterIBlockElementUpdate',
+                $this->MODULE_ID,
+                'CrimsonCrawlerIblock',
+                'update'
+        );
+
+        return true;
+    }
 
 }

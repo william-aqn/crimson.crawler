@@ -22,9 +22,20 @@ class CrimsonCrawlerOptions {
             $APPLICATION->AuthForm(Loc::getMessage("ACCESS_DENIED"));
         }
 
+        // Проверяем наличие curl на сервере
+        if (!function_exists("curl_init")) {
+            \CAdminMessage::ShowMessage(array(
+                "MESSAGE" => "Установите php_curl",
+                "DETAILS" => "Не установлено расширение curl на сервере.",
+                "HTML" => true,
+                "TYPE" => "ERR",
+            ));
+        }
+
+        // TODO: проверить наличие сайтов в /etc/hosts
         // Проверяем наличие sitemap.xml у сайтов
         $crawler = new \CrimsonCrawlerHelper();
-        foreach ($crawler->sites() as $key => $site) {
+        foreach ($crawler->getSites() as $key => $site) {
             \CAdminMessage::ShowMessage(array(
                 "MESSAGE" => "[{$key}] {$site['NAME']}",
                 "DETAILS" => "{$site['SITEMAP_FILE']}<br><a href='/bitrix/admin/seo_sitemap.php?lang=ru'>Настроить</a>",
@@ -33,21 +44,43 @@ class CrimsonCrawlerOptions {
             ));
         }
 
+        \Bitrix\Main\Loader::includeModule('iblock');
+        $iblock_default_select = [];
+        if (\Bitrix\Main\Loader::includeModule('seo')) {
+            // Выбираем все инфоблоки из всех карт сайта
+            $rsSiteMaps = \Bitrix\Seo\SitemapIblockTable::getList(['select' => ['IBLOCK_ID']]);
+            while ($siteMap = $rsSiteMaps->fetch()) {
+                $iblock_default_select[$siteMap['IBLOCK_ID']] = true;
+            }
+        }
+//        $rsIblockTypes = \Bitrix\Iblock\TypeTable::getList();
+//        while ($iblockTypes = $rsIblockTypes->fetch()) {
+//            TB::pr($iblockTypes);
+//        }
+        // Выводим инфоблоки сгруппированные по типу инфоблока
+        $listIblocks = [];
+        $rsIblocks = \Bitrix\Iblock\IblockTable::getList([
+                    'select' => ['ID', 'NAME', 'IBLOCK_TYPE_ID'],
+                    //'select' => ['*'],
+                    'order' => [['IBLOCK_TYPE_ID' => 'ASC'], ['SORT' => 'ASC']],
+        ]);
+        $curType = '';
+        while ($iblocks = $rsIblocks->fetch()) {
+            if ($curType != $iblocks['IBLOCK_TYPE_ID']) {
+                $curType = $iblocks['IBLOCK_TYPE_ID'];
+                // Небольшой хак для удобства восприятия. disabled, или optgroup нельзя в __AdmSettingsDrawList для options :(
+                $listIblocks[$iblocks['IBLOCK_TYPE_ID']] = "---------------{$iblocks['IBLOCK_TYPE_ID']}---------------";
+            }
+            $listIblocks[$iblocks['ID']] = $iblocks['NAME'];
+        }
+        unset($curType);
+
         $aTabs = [
             [
                 "DIV" => "edit_all",
                 "TAB" => "Общие настройки",
                 "OPTIONS" => [
                     'Выберите сайты для переобхода', // Заголовок
-//                    [
-//                        'SITES', // Ключ
-//                        'Активные сайты в системе', // Название поля
-//                        's1', // По умолчанию
-//                        [
-//                            'multiselectbox',
-//                            $crawler->sites_multiselect()
-//                        ]
-//                    ],
                     [
                         'URL', // Ключ
                         'Ссылки на sitemap.xml', // Название поля
@@ -58,12 +91,23 @@ class CrimsonCrawlerOptions {
                             90
                         ]
                     ],
+//                    [
+//                        'TIME',
+//                        'Интервал переобхода (минут)',
+//                        60,
+//                        ['text', 5]
+//                    ],
+                    'Выберите инфоблоки для переобхода элементов, после их изменения/добавления.',
+                    ['note' => 'По умолчанию поле заполнено инфоблоками из существующих карт сайта. Нажимайте на поле с crtl, иначе всё сбросится'],
                     [
-                        'TIME',
-                        'Интервал переобхода (минут)',
-                        60,
-                        ['text', 5]
-                    ]
+                        'IBLOCKS',
+                        'Инфоблоки',
+                        implode(',', array_keys($iblock_default_select)), // По умолчанию
+                        [
+                            'multiselectbox',
+                            $listIblocks
+                        ]
+                    ],
                 ]
             //"TITLE" => Loc::getMessage("TAB_TITLE")
             ]
@@ -81,7 +125,7 @@ class CrimsonCrawlerOptions {
         // Показываем форму
         $tabControl = new \CAdminTabControl('tabControl', $aTabs);
         ?><form method='post' action='' name='bootstrap'>
-            <?
+        <?
             $tabControl->Begin();
             foreach ($aTabs as $aTab) {
                 $tabControl->BeginNextTab();
