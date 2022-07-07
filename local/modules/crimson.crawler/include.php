@@ -235,8 +235,7 @@ class CrimsonCrawlerHelper {
      */
     private function checkWorkDir($id) {
         if (!is_dir(static::WORK_DIR . "/task/$id/")) {
-            mkdir(static::WORK_DIR . "/task/$id/");
-            return true; // Создана же
+            return mkdir(static::WORK_DIR . "/task/$id/");
         }
         return true;
     }
@@ -374,7 +373,10 @@ class CrimsonCrawlerHelper {
         $ret = ['last_update' => '', 'links_total' => 0, 'links_processed' => 0, 'status' => 'init'];
         if ($url = $this->getUrlById($id)) {
             // Проверяем/создаём папку для отчёта
-            $this->checkWorkDir($id);
+            if (!$this->checkWorkDir($id)){
+                $ret['status'] = 'error: cant create work dir: ['.static::WORK_DIR . "/task/$id/]";
+                return $ret;
+            }
 
             // Проверяем/создаём файл со ссылками
             if (!$this->checkTaskLinksFile($id)) {

@@ -22,8 +22,10 @@ class crimson_crawler extends CModule {
         $path = substr($path, 0, strlen($path) - strlen("/index.php"));
         include($path . "/version.php");
 
-        $this->MODULE_VERSION = $arModuleVersion["VERSION"];
-        $this->MODULE_VERSION_DATE = $arModuleVersion["VERSION_DATE"];
+        if (is_array($arModuleVersion) && array_key_exists('VERSION', $arModuleVersion)) {
+            $this->MODULE_VERSION = $arModuleVersion['VERSION'];
+            $this->MODULE_VERSION_DATE = $arModuleVersion['VERSION_DATE'];
+        }
 
         $this->MODULE_NAME = Loc::getMessage("CRIMSON_CRAWLER_MODULE_NAME");
         $this->MODULE_DESCRIPTION = Loc::getMessage("CRIMSON_CRAWLER_MODULE_DISCRIPTION");
@@ -37,6 +39,14 @@ class crimson_crawler extends CModule {
     }
 
     function DoInstall() {
+        /*if (is_array($this->NEED_MODULES) && !empty($this->NEED_MODULES)) {
+            foreach ($this->NEED_MODULES as $module) {
+                if (!IsModuleInstalled($module)) {
+                    $this->ShowForm('ERROR', GetMessage('CRIMSON_NEED_MODULES', array('#MODULE#' => $module)));
+                }
+            }
+        }*/
+
         global $APPLICATION;
         $this->InstallEvents();
         $this->InstallFiles();
